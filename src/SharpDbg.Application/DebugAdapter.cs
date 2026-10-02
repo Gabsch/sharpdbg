@@ -741,7 +741,7 @@ public class DebugAdapter : DebugAdapterBase
 	{
 		try
 		{
-			await ExecuteWithDebuggerProcessingLockAsync(() => _debugger.HandleContinueRequest());
+			await ExecuteWithDebuggerProcessingLockAsync(() => _debugger.HandleContinueRequest(responder.Arguments.ThreadId));
 			responder.SetResponse(new ContinueResponse
 			{
 				AllThreadsContinued = true
