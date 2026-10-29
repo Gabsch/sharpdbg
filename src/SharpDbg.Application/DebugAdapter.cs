@@ -62,7 +62,7 @@ public class DebugAdapter : DebugAdapterBase
 		try
 		{
 			// No-op if a disconnect request was already handled - Disconnect only disposes once
-			_debugger.Disconnect(true);
+			_debugger.Disconnect(true).GetAwaiter().GetResult();
 		}
 		catch { /* */ }
 	}
