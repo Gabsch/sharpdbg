@@ -17,10 +17,21 @@ namespace SharpDbg.Infrastructure.Debugger;
 public record SharpDbgBreakpointRequest(int Line, string? Condition = null, string? HitCondition = null, int? Column = null);
 public record SharpDbgFunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null);
 public record SharpDbgExceptionBreakpointRequest(SharpDbgExceptionBreakpointFilter Filter, string? Condition = null);
+public record SharpDbgModuleInfo(string Id, string Name, string Path, bool IsUserCode, bool HasSymbols);
 public enum SharpDbgExceptionBreakpointFilter { All, UserUnhandled }
 
 public partial class ManagedDebugger
 {
+	public IReadOnlyList<SharpDbgModuleInfo> GetModules() => _modules.Values
+		.OrderBy(static module => module.ModulePath, StringComparer.OrdinalIgnoreCase)
+		.Select(static module => new SharpDbgModuleInfo(
+			module.ModulePath,
+			module.ModuleName,
+			module.ModulePath,
+			module.IsUserCode,
+			module.MetadataReader.HasSymbols))
+		.ToArray();
+
 	// Store launch info for deferred attach in ConfigurationDone
 	private LaunchInfo? _pendingLaunchInfo;
 	private RemoteAttachInfo? _pendingRemoteAttachInfo;

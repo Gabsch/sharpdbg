@@ -345,6 +345,7 @@ public class DebugAdapter : DebugAdapterBase
 			SupportsConditionalBreakpoints = true,
 			SupportsHitConditionalBreakpoints = true,
 			SupportsEvaluateForHovers = true,
+			SupportsModulesRequest = true,
 			SupportsStepBack = false,
 			SupportsSetVariable = false,
 			SupportsRestartFrame = false,
@@ -359,6 +360,44 @@ public class DebugAdapter : DebugAdapterBase
 				new ExceptionBreakpointsFilter { Filter = "user-unhandled", Label = "User-Unhandled Exceptions", Default = true }
 			]
 		};
+	}
+
+	protected override async void HandleModulesRequestAsync(IRequestResponder<ModulesArguments, ModulesResponse> responder)
+	{
+		try
+		{
+			var startModule = responder.Arguments.StartModule ?? 0;
+			var moduleCount = responder.Arguments.ModuleCount;
+			if (startModule < 0 || moduleCount < 0)
+			{
+				throw new ProtocolException("Module pagination values must be non-negative.");
+			}
+
+			var modules = await ExecuteWithDebuggerProcessingLockAsync(() => _debugger.GetModules());
+			var selected = modules.Skip(startModule);
+			if (moduleCount is > 0)
+			{
+				selected = selected.Take(moduleCount.Value);
+			}
+
+			responder.SetResponse(new ModulesResponse
+			{
+				Modules = selected.Select(module => new Module
+				{
+					Id = module.Id,
+					Name = module.Name,
+					Path = module.Path,
+					IsUserCode = module.IsUserCode,
+					SymbolStatus = module.HasSymbols ? "Symbols loaded" : "Symbols unavailable"
+				}).ToList(),
+				TotalModules = modules.Count
+			});
+		}
+		catch (Exception ex)
+		{
+			_logger?.Invoke($"HandleModulesRequestAsync failed: {ex.Message} , {ex}");
+			responder.SetError(new ProtocolException($"Failed to enumerate modules: {ex.Message}", ex));
+		}
 	}
 
 	protected override async void HandleLaunchRequestAsync(IRequestResponder<LaunchArguments> responder)
