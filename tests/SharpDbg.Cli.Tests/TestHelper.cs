@@ -200,9 +200,9 @@ public static partial class TestHelper
 		return debugProtocolHost;
 	}
 
-	public static DebugProtocolHost WithContinueRequest(this DebugProtocolHost debugProtocolHost)
+	public static DebugProtocolHost WithContinueRequest(this DebugProtocolHost debugProtocolHost, int threadId = 0)
 	{
-		var continueRequest = new ContinueRequest();
+		var continueRequest = new ContinueRequest { ThreadId = threadId };
 		debugProtocolHost.SendRequestSync(continueRequest);
 		return debugProtocolHost;
 	}

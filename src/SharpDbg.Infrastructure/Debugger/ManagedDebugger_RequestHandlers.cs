@@ -193,13 +193,13 @@ public partial class ManagedDebugger
 	/// <summary>
 	/// Continue execution
 	/// </summary>
-	public void HandleContinueRequest()
+	public void HandleContinueRequest(int threadId)
 	{
 		_logger?.Invoke("Continue");
-		ContinueWithVariableClearAllowSuperfluousContinue();
+		ContinueWithVariableClearAllowSuperfluousContinue(threadId);
 	}
 
-	private void ContinueWithVariableClearAllowSuperfluousContinue()
+	private void ContinueWithVariableClearAllowSuperfluousContinue(int threadId)
 	{
 		Guard.Against.Null(_process);
 		_variableManager.ClearAndDisposeHandleValues();
@@ -208,6 +208,7 @@ public partial class ManagedDebugger
 		var result = _process.TryContinue(false);
 		if (result is Cor.CORDBG_E_SUPERFLOUS_CONTINUE) return;
 		Marshal.ThrowExceptionForHR(result);
+		OnContinued?.Invoke(threadId);
 	}
 
 	private void ContinueWithVariableClear()
