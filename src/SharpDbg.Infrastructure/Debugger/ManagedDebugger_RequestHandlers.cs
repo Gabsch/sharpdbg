@@ -93,6 +93,7 @@ public partial class ManagedDebugger
 
 		_corDebug = await ClrDebugExtensions.Automatic(processId, true);
 		_corDebug.Initialize();
+		_corDebugInitialized = true;
 		_corDebug.SetManagedHandler(_callbacks);
 
 		_process = _corDebug.DebugActiveProcess(processId, false);
@@ -766,7 +767,7 @@ public partial class ManagedDebugger
 	/// <summary>
 	/// Terminate the debugged process
 	/// </summary>
-	public void Terminate()
+	public async Task Terminate()
 	{
 		_logger?.Invoke("Terminate");
 		if (_process is not null)
@@ -784,21 +785,41 @@ public partial class ManagedDebugger
 			catch (Exception ex)
 			{
 				_logger?.Invoke($"Error terminating process: {ex.Message}");
+				Dispose(terminateCorDebug: false);
+				throw;
 			}
+
+			await CompleteTerminationAfterExitProcessAsync().ConfigureAwait(false);
+			return;
 		}
-		Dispose();
+		Dispose(terminateCorDebug: true);
+	}
+
+	internal async Task CompleteTerminationAfterExitProcessAsync(TimeSpan? timeout = null)
+	{
+		try
+		{
+			await _processExitObserved.Task.WaitAsync(timeout ?? TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+			await DrainRuntimeEventQueue().ConfigureAwait(false);
+		}
+		catch (TimeoutException ex)
+		{
+			throw new TimeoutException("The runtime did not deliver ExitProcess before ICorDebug shutdown.", ex);
+		}
+
+		Dispose(terminateCorDebug: true);
 	}
 
 	/// <summary>
 	/// Disconnect from the debuggee and Dispose
 	/// </summary>
-	public void Disconnect(bool terminateDebuggee)
+	public async Task Disconnect(bool terminateDebuggee)
 	{
 		_logger?.Invoke($"Disconnect (terminate: {terminateDebuggee})");
 
 		if (terminateDebuggee)
 		{
-			Terminate();
+			await Terminate().ConfigureAwait(false);
 		}
 		else
 		{
@@ -807,7 +828,7 @@ public partial class ManagedDebugger
 				var hResult = _process.TryStop(0);
 				if (hResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED)) _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
 			}
-			Dispose();
+			Dispose(terminateCorDebug: false);
 		}
 	}
 

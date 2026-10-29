@@ -13,6 +13,7 @@ namespace SharpDbg.Infrastructure.Debugger;
 public partial class ManagedDebugger
 {
 	private ICorDebug? _corDebug;
+	private bool _corDebugInitialized;
 	private ICorDebugProcess? _process;
 	private readonly CorDebugManagedCallback _callbacks;
 	private readonly BreakpointManager _breakpointManager;
@@ -74,6 +75,7 @@ public partial class ManagedDebugger
 
 	private Task? _runtimeEventCallbackProcessing;
 	private readonly Channel<CorDebugManagedCallbackEventArgs> _runtimeEventChannel;
+	private readonly TaskCompletionSource _processExitObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
 	public readonly AsyncLock DapRequestAndRuntimeEventLock = new();
 
 	public ManagedDebugger(Action<string>? logger = null)
@@ -97,6 +99,7 @@ public partial class ManagedDebugger
 	private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)
 	{
 		_runtimeEventChannel.Writer.TryWrite(e);
+		if (e is ExitProcessCorDebugManagedCallbackEventArgs) _processExitObserved.TrySetResult();
 	}
 
 	public async Task DrainRuntimeEventQueue()
@@ -201,6 +204,7 @@ public partial class ManagedDebugger
 		{
 			_corDebug = await ClrDebugExtensions.Automatic(processId);
 			_corDebug.Initialize();
+			_corDebugInitialized = true;
 			_corDebug.SetManagedHandler(_callbacks);
 
 			// Attach to the process
@@ -472,9 +476,10 @@ public partial class ManagedDebugger
 	}
 
 	// Not intended to implement IDisposable - it is intended that this is called via Disconnect()
-	private void Dispose()
+	private void Dispose(bool terminateCorDebug)
 	{
-		if (_process is null) return; // A client may call Terminate, then Disconnect, both of which call Dispose. Dispose only needs to be run once.
+		if (_process is null && _corDebug is null) return; // A client may call Terminate, then Disconnect, both of which call Dispose. Dispose only needs to be run once.
+		terminateCorDebug |= _process is null;
 
 		// Dispose modules, which releases PDB files
 		foreach (var moduleInfo in _modules.Values)
@@ -522,10 +527,23 @@ public partial class ManagedDebugger
 		while (_runtimeEventChannel.Reader.TryRead(out _)) { }
 
 		// Detach from the process
-		_process?.TryDetach();
+		if (_process is { } process)
+		{
+			var detachResult = process.TryDetach();
+			if (detachResult is not Cor.S_OK)
+				_logger?.Invoke($"Failed to detach ICorDebug from the process: {detachResult}");
+		}
+		if (terminateCorDebug && _corDebugInitialized && _corDebug is { } corDebug)
+		{
+			_corDebugInitialized = false;
+			var terminateResult = corDebug.TryTerminate();
+			if (terminateResult is not Cor.S_OK)
+				_logger?.Invoke($"Failed to terminate ICorDebug after detaching the process: {terminateResult}");
+		}
 
 		_isAttached = false;
 		_process = null;
+		_corDebugInitialized = false;
 		_corDebug = null;
 
 		_debuggeeProcess?.Dispose();
