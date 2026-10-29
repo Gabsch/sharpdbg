@@ -24,6 +24,7 @@ public class DebugAdapter : DebugAdapterBase
 	private bool _clientLinesStartAt1 = true;
 	private bool _clientColumnsStartAt1 = true;
 	private int _shutdownRequested;
+	private int _preserveDebuggeeOnTransportClose;
 
 	/// <summary>
 	/// Raised once the debug session has ended (a disconnect request has been fully handled).
@@ -59,6 +60,12 @@ public class DebugAdapter : DebugAdapterBase
 	/// </summary>
 	public void DapAborted_ShutdownDebugger()
 	{
+		if (Volatile.Read(ref _preserveDebuggeeOnTransportClose) is not 0)
+		{
+			_logger?.Invoke("DAP transport closed after a non-terminating disconnect request; preserving the debuggee.");
+			return;
+		}
+
 		try
 		{
 			// No-op if a disconnect request was already handled - Disconnect only disposes once
@@ -812,9 +819,11 @@ public class DebugAdapter : DebugAdapterBase
 
 	protected override async void HandleDisconnectRequestAsync(IRequestResponder<DisconnectArguments> responder)
 	{
+		var terminateDebuggee = responder.Arguments?.TerminateDebuggee ?? false;
+		RecordDisconnectIntent(terminateDebuggee);
 		try
 		{
-			await ExecuteWithDebuggerProcessingLockAsync(() => _debugger.Disconnect(responder.Arguments?.TerminateDebuggee ?? false));
+			await ExecuteWithDebuggerProcessingLockAsync(() => _debugger.Disconnect(terminateDebuggee));
 			responder.SetResponse(new DisconnectResponse());
 			RequestDebuggerProcessShutdown();
 		}
@@ -824,6 +833,9 @@ public class DebugAdapter : DebugAdapterBase
 			responder.SetError(new ProtocolException($"Failed to disconnect: {ex.Message}", ex));
 		}
 	}
+
+	private void RecordDisconnectIntent(bool terminateDebuggee) =>
+		Volatile.Write(ref _preserveDebuggeeOnTransportClose, terminateDebuggee ? 0 : 1);
 
 	protected override async void HandleTerminateRequestAsync(IRequestResponder<TerminateArguments> responder)
 	{

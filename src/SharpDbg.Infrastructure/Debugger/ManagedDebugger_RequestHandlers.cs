@@ -802,13 +802,39 @@ public partial class ManagedDebugger
 		}
 		else
 		{
-			if (_process is not null && _isAttached && _process?.TryIsRunning(out var isRunning) is Cor.S_OK && isRunning)
+			// Windows .NET 10's DBI detach can close a target handle after the resumed runtime has
+			// already reused its numeric value. Keep this scoped to the proven-bad runtime major;
+			// a future runtime may fix the race and can be enabled after independent qualification.
+			if (TryGetUnsafeWindowsLiveDetachRuntime(out var runtimeVersion))
+			{
+				throw new NotSupportedException(
+					$"Live detach is disabled for Windows .NET {runtimeVersion}. CoreCLR DBI can close a reused target handle after ICorDebugProcess.Detach resumes the debuggee, which can terminate it with E_ACCESSDENIED or an invalid-handle error. Retry with terminateDebuggee=true. A future .NET runtime may fix this race; narrow or remove this .NET 10 guard only after that runtime is qualified.");
+			}
+
+			if (_process is not null && _isAttached && _process.TryIsRunning(out var isRunning) is Cor.S_OK && isRunning)
 			{
 				var hResult = _process.TryStop(0);
 				if (hResult is not (Cor.S_OK or Cor.CORDBG_E_PROCESS_TERMINATED)) _logger?.Invoke($"Error stopping process during disconnect: {hResult}");
 			}
 			Dispose();
 		}
+	}
+
+	private bool TryGetUnsafeWindowsLiveDetachRuntime(out string runtimeVersion)
+	{
+		runtimeVersion = string.Empty;
+		if (!OperatingSystem.IsWindows()) return false;
+
+		var coreLibrary = _modules.Values
+			.FirstOrDefault(module => string.Equals(module.ModuleName, "System.Private.CoreLib.dll", StringComparison.OrdinalIgnoreCase));
+		if (coreLibrary is null) return false;
+
+		var assemblyVersion = coreLibrary.MetadataReader.PeMetadataReader.GetAssemblyDefinition().Version;
+		if (assemblyVersion.Major != 10) return false;
+
+		var versionDirectory = Path.GetFileName(Path.GetDirectoryName(coreLibrary.ModulePath));
+		runtimeVersion = string.IsNullOrWhiteSpace(versionDirectory) ? assemblyVersion.ToString() : versionDirectory;
+		return true;
 	}
 
 	public async Task<ExceptionInfo> ExceptionInfo(ThreadId threadId)
