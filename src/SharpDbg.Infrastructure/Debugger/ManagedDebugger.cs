@@ -135,10 +135,10 @@ public partial class ManagedDebugger
 		}
 	}
 
-	internal async Task<CorDebugManagedCallbackEventArgs> ProcessRuntimeEventsUntilEvalEvent()
+	internal async Task<CorDebugManagedCallbackEventArgs> ProcessRuntimeEventsUntilEvalEvent(CancellationToken cancellationToken)
 	{
 		var reader = _runtimeEventChannel.Reader;
-		while (await reader.WaitToReadAsync())
+		while (await reader.WaitToReadAsync(cancellationToken))
 		{
 			if (reader.TryRead(out var callbackEvent) is false) throw new InvalidOperationException("Expected to read an event from the runtime event queue, but none was available");
 			await OnAnyEvent(this, callbackEvent).ConfigureAwait(false);
@@ -547,4 +547,5 @@ public partial class ManagedDebugger
 public class EvalStatus
 {
 	public bool IsRunning { get; set; }
+	public bool RequiresDisconnect { get; set; }
 }

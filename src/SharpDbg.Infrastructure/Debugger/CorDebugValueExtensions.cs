@@ -99,12 +99,12 @@ public static class CorDebugValueExtensions
 		return corDebugGenericValue;
 	}
 
-	public static async Task<ICorDebugValue?> GetPropertyValue(this ICorDebugValue objectValue, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, ICorDebugILFrame ilFrame, string propertyName)
+	public static async Task<ICorDebugValue?> GetPropertyValue(this ICorDebugValue objectValue, Func<CancellationToken, Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, ICorDebugILFrame ilFrame, string propertyName)
 	{
 		return (await GetPropertyValueWithSetter(objectValue, processEventsUntilEvalEventFunc, evalStatus, ilFrame, propertyName))?.Value;
 	}
 
-	public static async Task<(ICorDebugValue Value, ICorDebugFunction? SetterFunction)?> GetPropertyValueWithSetter(this ICorDebugValue objectValue, Func<Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, ICorDebugILFrame ilFrame, string propertyName)
+	public static async Task<(ICorDebugValue Value, ICorDebugFunction? SetterFunction)?> GetPropertyValueWithSetter(this ICorDebugValue objectValue, Func<CancellationToken, Task<CorDebugManagedCallbackEventArgs>> processEventsUntilEvalEventFunc, EvalStatus evalStatus, ICorDebugILFrame ilFrame, string propertyName)
 	{
 		var unwrappedValue = objectValue.UnwrapDebugValueToObject();
 

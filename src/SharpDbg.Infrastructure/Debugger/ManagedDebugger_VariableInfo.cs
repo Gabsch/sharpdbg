@@ -452,7 +452,45 @@ public partial class ManagedDebugger
 		return (ClassNameToMaybeLanguageAlias(typeName), moduleInfo, typeHandle);
 	}
 
-	internal class EvalException(string message) : Exception(message);
+	internal class EvalException : Exception
+	{
+		public EvalException(string message) : base(message)
+		{
+			Operation = "eval";
+		}
+
+		public EvalException(
+			string operation,
+			string message,
+			int? operationHResult = null,
+			bool timedOut = false,
+			int? abortHResult = null)
+			: base(BuildMessage(operation, message, operationHResult, timedOut, abortHResult))
+		{
+			Operation = operation;
+			OperationHResult = operationHResult;
+			TimedOut = timedOut;
+			AbortHResult = abortHResult;
+		}
+
+		public string Operation { get; }
+		public int? OperationHResult { get; }
+		public bool TimedOut { get; }
+		public int? AbortHResult { get; }
+
+		private static string BuildMessage(
+			string operation,
+			string message,
+			int? operationHResult,
+			bool timedOut,
+			int? abortHResult)
+		{
+			var evidence = new List<string> { $"operation={operation}", $"timedOut={timedOut.ToString().ToLowerInvariant()}" };
+			if (operationHResult is not null) evidence.Add($"hresult={EvalExecution.FormatHResult(operationHResult.Value)}");
+			if (abortHResult is not null) evidence.Add($"abortHResult={EvalExecution.FormatHResult(abortHResult.Value)}");
+			return $"{message} ({string.Join(", ", evidence)})";
+		}
+	}
 	private async Task AddProperties(mdProperty[] mdProperties, IMetaDataImport metadataImport, ICorDebugClass corDebugClass, ThreadId threadId, FrameStackDepth stackDepth, ICorDebugValue corDebugValue, List<VariableInfo> result)
 	{
 		foreach (var mdProperty in mdProperties)
